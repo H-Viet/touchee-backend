@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/nest-cli",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "apps/touchee-backend/src",
+  "compilerOptions": {
+    "deleteOutDir": true,
+    "webpack": true,
+    "tsConfigPath": "apps/touchee-backend/tsconfig.app.json"
+  },
+  "monorepo": true,
+  "root": "apps/touchee-backend",
+  "projects": {
+    "api": {
+      "type": "application",
+      "root": "apps/api",
+      "entryFile": "main",
+      "sourceRoot": "apps/api/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/api/tsconfig.app.json"
+      }
+    },
+    "touchee-backend": {
+      "type": "application",
+      "root": "apps/touchee-backend",
+      "entryFile": "main",
+      "sourceRoot": "apps/touchee-backend/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/touchee-backend/tsconfig.app.json"
+      }
+    }
+  }
+}
