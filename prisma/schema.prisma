@@ -1,0 +1,676 @@
+// ============================================================================
+// Touchee — Schema Ver 1.0
+// Naming convention: camelCase in Prisma/TS code, snake_case in the actual
+// Postgres columns/tables via @map / @@map — keeps JS ergonomic, keeps SQL idiomatic.
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// 1. IDENTITY & AUTH
+// ============================================================================
+
+model Role {
+  id   String @id @default(uuid())
+  name String @unique // "user", "moderator", "admin", "expert"
+
+  accounts Account[]
+
+  @@map("roles")
+}
+
+model Account {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  roleId       String    @map("role_id")
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  role Role  @relation(fields: [roleId], references: [id])
+  user User?
+
+  @@map("accounts")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  accountId   String   @unique @map("account_id")
+  fullname    String
+  username    String   @unique
+  age         Int?
+  gender      String?
+  location    String?
+  avatarUrl   String?  @map("avatar_url")
+  bio         String?
+  personality String? // consider turning into a lookup table once the set of values is finalized
+  levelId     String?  @map("level_id")
+  streak      Int      @default(0)
+  accScore    Int      @default(0) @map("acc_score")
+  phoneNumber String?  @map("phone_number")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  level   Level?  @relation(fields: [levelId], references: [id])
+
+  idImage          IDImage?
+  status           UserStatus?
+  achievements     UserAchievement[]
+  communities      UserCommunity[]
+  moderatedCommunities Community[]      @relation("CommunityModerator")
+  posts            Post[]
+  comments         Comment[]
+  postVotes        PostVote[]
+  commentVotes     CommentVote[]
+  chats            UserChat[]
+  sentMessages     Message[]            @relation("MessageSender")
+  messageReads     MessageRead[]
+  reactions        UserReaction[]
+
+  matchesAsA       Match[]              @relation("MatchUserA")
+  matchesAsB       Match[]              @relation("MatchUserB")
+  exclusionsAsA    MatchExclusion[]     @relation("ExclusionUserA")
+  exclusionsAsB    MatchExclusion[]     @relation("ExclusionUserB")
+  blockedUsers     BlockedUser[]        @relation("BlockingUser")
+  blockedByUsers   BlockedUser[]        @relation("BlockedTargetUser")
+  ratingsGiven     Rating[]             @relation("RatingRater")
+  ratingsReceived  Rating[]             @relation("RatingRatee")
+
+  sentFriendRequests     FriendRequest[] @relation("FriendRequestSender")
+  receivedFriendRequests FriendRequest[] @relation("FriendRequestReceiver")
+  friendsAsA             Friend[]        @relation("FriendUserA")
+  friendsAsB             Friend[]        @relation("FriendUserB")
+
+  reportsMade      Report[]             @relation("ReportReporter")
+  reportsReceived  Report[]             @relation("ReportReportedUser")
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+// 1:1 identity verification images
+model IDImage {
+  userId      String   @id @map("user_id")
+  idImgFront  String   @map("id_img_front")
+  idImgBack   String   @map("id_img_back")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("id_images")
+}
+
+model UserStatus {
+  id     String @id @default(uuid())
+  userId String @unique @map("user_id")
+  code   String // e.g. "active", "suspended", "banned"
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_statuses")
+}
+
+// ============================================================================
+// 2. GAMIFICATION / LEVEL-GATED PERMISSIONS
+// ============================================================================
+
+model Level {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  minScore  Int      @map("min_score")
+  maxScore  Int      @map("max_score")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  permissions LevelPermission[]
+
+  @@map("levels")
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  levels LevelPermission[]
+
+  @@map("permissions")
+}
+
+model LevelPermission {
+  id           String   @id @default(uuid())
+  levelId      String   @map("level_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  level      Level      @relation(fields: [levelId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([levelId, permissionId])
+  @@map("level_permissions")
+}
+
+model Achievement {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  score       Int      // points granted when achieved
+  threshold   Int      // number of times the qualifying action must happen
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  users UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  achievementId String   @map("achievement_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+// ============================================================================
+// 3. COMMUNITIES (curated, Reddit-style but narrowed to safe-space categories)
+// ============================================================================
+
+model CommunityCategory {
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g. "Anxiety", "Grief", "Relationships", "Daily Venting"
+  description String?
+
+  communities Community[]
+
+  @@map("community_categories")
+}
+
+model Community {
+  id            String   @id @default(uuid())
+  name          String
+  description   String?
+  categoryId    String   @map("category_id")
+  moderatorId   String   @map("moderator_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  category  CommunityCategory @relation(fields: [categoryId], references: [id])
+  moderator User              @relation("CommunityModerator", fields: [moderatorId], references: [id])
+
+  members UserCommunity[]
+  posts   Post[]
+
+  @@map("communities")
+}
+
+enum CommunityMemberRole {
+  MEMBER
+  MODERATOR
+}
+
+model UserCommunity {
+  id          String              @id @default(uuid())
+  userId      String              @map("user_id")
+  communityId String              @map("community_id")
+  role        CommunityMemberRole @default(MEMBER)
+  joinedAt    DateTime            @default(now()) @map("joined_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+  @@map("user_communities")
+}
+
+model Post {
+  id          String   @id @default(uuid())
+  authorId    String   @map("author_id")
+  communityId String   @map("community_id")
+  content     String
+  upVote      Int      @default(0) // denormalized cache — source of truth is PostVote
+  downVote    Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+  votes     PostVote[]
+
+  @@index([communityId])
+  @@index([authorId])
+  @@map("posts")
+}
+
+enum VoteValue {
+  UP
+  DOWN
+}
+
+// Tracks each user's vote so double-voting is impossible and votes can be changed/undone.
+model PostVote {
+  id     String    @id @default(uuid())
+  postId String    @map("post_id")
+  userId String    @map("user_id")
+  value  VoteValue
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("post_votes")
+}
+
+model Comment {
+  id               String   @id @default(uuid())
+  postId           String   @map("post_id")
+  authorId         String   @map("author_id")
+  content          String
+  upVote           Int      @default(0)
+  downVote         Int      @default(0)
+  replyForCommentId String? @map("reply_for_comment_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  replyTo       Comment?  @relation("CommentReplies", fields: [replyForCommentId], references: [id])
+  replies       Comment[] @relation("CommentReplies")
+  votes         CommentVote[]
+
+  @@index([postId])
+  @@map("comments")
+}
+
+model CommentVote {
+  id        String    @id @default(uuid())
+  commentId String    @map("comment_id")
+  userId    String    @map("user_id")
+  value     VoteValue
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+  @@map("comment_votes")
+}
+
+// ============================================================================
+// 4. CHAT & MESSAGING
+// ============================================================================
+
+model Chat {
+  id        String   @id @default(uuid())
+  name      String?
+  isGroup   Boolean  @default(false) @map("is_group")
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  members  UserChat[]
+  messages Message[]
+  matches  Match[]
+  ratings  Rating[]
+
+  @@map("chats")
+}
+
+model UserChat {
+  id       String   @id @default(uuid())
+  userId   String   @map("user_id")
+  chatId   String   @map("chat_id")
+  isAdmin  Boolean  @default(false) @map("is_admin")
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, chatId])
+  @@map("user_chats")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  chatId    String   @map("chat_id")
+  senderId  String   @map("sender_id")
+  content   String
+  status    String   @default("sent") // sent / edited / deleted
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  chat   Chat   @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender User   @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  logs      MessageLog[]
+  reads     MessageRead[]
+  reactions UserReaction[]
+
+  @@index([chatId])
+  @@map("messages")
+}
+
+// Edit history for a message
+model MessageLog {
+  id          String   @id @default(uuid())
+  messageId   String   @map("message_id")
+  prevContent String   @map("prev_content")
+  updatedAt   DateTime @default(now()) @map("updated_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("message_logs")
+}
+
+// Per-person read receipts — a single status field on Message can't represent
+// "read by 3 of 5 people in a group chat".
+model MessageRead {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  readAt    DateTime @default(now()) @map("read_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@map("message_reads")
+}
+
+model Reaction {
+  id   String @id @default(uuid())
+  icon String
+  type String @unique // e.g. "heart", "laugh", "support"
+
+  userReactions UserReaction[]
+
+  @@map("reactions")
+}
+
+model UserReaction {
+  id         String   @id @default(uuid())
+  messageId  String   @map("message_id")
+  userId     String   @map("user_id")
+  reactionId String   @map("reaction_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  message  Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reaction Reaction @relation(fields: [reactionId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId]) // one reaction per user per message
+  @@map("user_reactions")
+}
+
+// ============================================================================
+// 5. MOOD-MATCHING
+// Live "who's available right now" state lives in Redis (not modeled here).
+// Postgres only stores durable records: completed/active matches, exclusions,
+// blocks, and ratings.
+// ============================================================================
+
+model MoodTag {
+  id   String @id @default(uuid())
+  code String @unique
+  name String // e.g. "Anxious", "Lonely", "Need to vent"
+
+  matches Match[]
+
+  @@map("mood_tags")
+}
+
+enum MatchStatus {
+  ACTIVE
+  ENDED
+}
+
+model Match {
+  id        String      @id @default(uuid())
+  userAId   String      @map("user_a_id")
+  userBId   String      @map("user_b_id")
+  moodTagId String?     @map("mood_tag_id")
+  chatId    String?     @map("chat_id")
+  status    MatchStatus @default(ACTIVE)
+  startedAt DateTime    @default(now()) @map("started_at")
+  endedAt   DateTime?   @map("ended_at")
+
+  userA   User     @relation("MatchUserA", fields: [userAId], references: [id])
+  userB   User     @relation("MatchUserB", fields: [userBId], references: [id])
+  moodTag MoodTag? @relation(fields: [moodTagId], references: [id])
+  chat    Chat?    @relation(fields: [chatId], references: [id])
+
+  ratings        Rating[]
+  friendRequests FriendRequest[]
+  callEvidence   CallEvidence[]
+
+  @@index([userAId])
+  @@index([userBId])
+  @@map("matches")
+}
+
+enum ExclusionReason {
+  BLOCKED
+  REPORTED
+  RECENT_MATCH
+}
+
+// Checked before pairing anyone in the Redis matching pool — this is the
+// answer to "should we ever match these two people again".
+model MatchExclusion {
+  id        String          @id @default(uuid())
+  userAId   String          @map("user_a_id")
+  userBId   String          @map("user_b_id")
+  reason    ExclusionReason
+  expiresAt DateTime?       @map("expires_at") // null = permanent (e.g. BLOCKED)
+  createdAt DateTime        @default(now()) @map("created_at")
+
+  userA User @relation("ExclusionUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("ExclusionUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@index([userAId])
+  @@index([userBId])
+  @@map("match_exclusions")
+}
+
+model BlockedUser {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  blockedUserId String   @map("blocked_user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user        User @relation("BlockingUser", fields: [userId], references: [id], onDelete: Cascade)
+  blockedUser User @relation("BlockedTargetUser", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, blockedUserId])
+  @@map("blocked_users")
+}
+
+model RatingType {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  name      String
+  score     Int      // points the ratee's accScore changes by
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ratings Rating[]
+
+  @@map("rating_types")
+}
+
+model Rating {
+  id           String   @id @default(uuid())
+  matchId      String   @map("match_id")
+  chatId       String?  @map("chat_id")
+  raterId      String   @map("rater_id")
+  rateeId      String   @map("ratee_id")
+  ratingTypeId String   @map("rating_type_id")
+  context      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  match      Match      @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  chat       Chat?      @relation(fields: [chatId], references: [id])
+  rater      User       @relation("RatingRater", fields: [raterId], references: [id])
+  ratee      User       @relation("RatingRatee", fields: [rateeId], references: [id])
+  ratingType RatingType @relation(fields: [ratingTypeId], references: [id])
+
+  @@map("ratings")
+}
+
+// ============================================================================
+// 6. FRIENDS
+// ============================================================================
+
+enum FriendRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
+model FriendRequest {
+  id         String              @id @default(uuid())
+  senderId   String              @map("sender_id")
+  receiverId String              @map("receiver_id")
+  matchId    String?             @map("match_id") // the match that prompted this request, if any
+  status     FriendRequestStatus @default(PENDING)
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+
+  sender   User   @relation("FriendRequestSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User   @relation("FriendRequestReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  match    Match? @relation(fields: [matchId], references: [id])
+
+  @@unique([senderId, receiverId])
+  @@map("friend_requests")
+}
+
+model Friend {
+  id        String   @id @default(uuid())
+  userAId   String   @map("user_a_id")
+  userBId   String   @map("user_b_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userA User @relation("FriendUserA", fields: [userAId], references: [id], onDelete: Cascade)
+  userB User @relation("FriendUserB", fields: [userBId], references: [id], onDelete: Cascade)
+
+  @@unique([userAId, userBId])
+  @@map("friends")
+}
+
+// ============================================================================
+// 7. TRUST & SAFETY
+// ============================================================================
+
+enum CallEvidenceType {
+  TRANSCRIPT
+  AUDIO_CLIP
+}
+
+// Rolling buffer during a call is kept in temporary encrypted storage and only
+// ever persisted here if a report is filed — see CallEvidenceType/expiresAt.
+model CallEvidence {
+  id          String           @id @default(uuid())
+  matchId     String           @map("match_id")
+  type        CallEvidenceType
+  storageRef  String           @map("storage_ref") // pointer to encrypted blob/transcript storage
+  capturedAt  DateTime         @default(now()) @map("captured_at")
+  expiresAt   DateTime         @map("expires_at") // auto-delete after retention window unless tied to an active investigation
+
+  match   Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  reports Report[]
+
+  @@map("call_evidence")
+}
+
+enum ReportType {
+  POST
+  COMMENT
+  CHAT_MESSAGE
+  CALL
+  PROFILE
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+// Generic across every reportable thing — targetId + reportType tell you what
+// was reported without needing a separate table per feature.
+model Report {
+  id               String       @id @default(uuid())
+  reporterId       String       @map("reporter_id")
+  reportedUserId   String       @map("reported_user_id")
+  reportType       ReportType   @map("report_type")
+  targetId         String       @map("target_id") // id of the post/comment/message/call/profile reported
+  reason           String
+  status           ReportStatus @default(PENDING)
+  evidenceId       String?      @map("evidence_id")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  resolvedAt       DateTime?    @map("resolved_at")
+
+  reporter     User          @relation("ReportReporter", fields: [reporterId], references: [id])
+  reportedUser User          @relation("ReportReportedUser", fields: [reportedUserId], references: [id])
+  evidence     CallEvidence? @relation(fields: [evidenceId], references: [id])
+
+  @@index([reportType, targetId])
+  @@map("reports")
+}
+
+// ============================================================================
+// 8. NOTIFICATIONS & SYSTEM
+// ============================================================================
+
+enum NotificationSourceType {
+  MESSAGE
+  REACTION
+  FRIEND_REQUEST
+  FRIEND_ACCEPTED
+  MATCH
+  SYSTEM
+}
+
+model Notification {
+  id         String                 @id @default(uuid())
+  receiverId String                 @map("receiver_id")
+  sourceType NotificationSourceType @map("source_type")
+  linkId     String?                @map("link_id") // id of whatever the notification points to
+  content    String
+  isRead     Boolean                @default(false) @map("is_read")
+  createdAt  DateTime               @default(now()) @map("created_at")
+
+  receiver User @relation(fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([receiverId, isRead])
+  @@map("notifications")
+}
+
+model SystemConfig {
+  id          String  @id @default(uuid())
+  key         String  @unique
+  description String?
+  value       String
+
+  @@map("system_configs")
+}
