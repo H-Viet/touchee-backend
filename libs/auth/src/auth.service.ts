@@ -87,6 +87,11 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    await this.prisma.account.update({
+      where: { id: account.id },
+      data: { lastLoginAt: new Date() },
+    });
+
     return this.buildAuthResponse(
       account.user.id,
       account.email,
