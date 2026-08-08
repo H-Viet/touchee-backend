@@ -282,22 +282,26 @@ model PostVote {
 }
 
 model Comment {
-  id               String   @id @default(uuid())
-  postId           String   @map("post_id")
-  authorId         String   @map("author_id")
-  content          String
-  upVote           Int      @default(0)
-  downVote         Int      @default(0)
-  replyForCommentId String? @map("reply_for_comment_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id        String   @id @default(uuid())
+  postId    String   @map("post_id")
+  authorId  String   @map("author_id")
+  content   String
+  upVote    Int      @default(0)   @map("up_vote")
+  downVote  Int      @default(0)   @map("down_vote")
+  parentId  String?  @map("parent_id")
+  depth     Int      @default(0)
+  path      String   @default("")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  post          Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author        User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  replyTo       Comment?  @relation("CommentReplies", fields: [replyForCommentId], references: [id])
-  replies       Comment[] @relation("CommentReplies")
-  votes         CommentVote[]
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentTree", fields: [parentId], references: [id])
+  children Comment[] @relation("CommentTree")
+  votes    CommentVote[]
 
+  @@index([postId, depth])
+  @@index([path])
   @@index([postId])
   @@map("comments")
 }
