@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '@app/database';
 import { VoteValue } from '@prisma/client';
 import { CreatePostDto } from './dto/create-post.dto';
@@ -15,6 +19,21 @@ export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(authorId: string, dto: CreatePostDto) {
+    // Check user is actually a member of this community
+    const membership = await this.prisma.userCommunity.findUnique({
+      where: {
+        userId_communityId: {
+          userId: authorId,
+          communityId: dto.communityId,
+        },
+      },
+    });
+    if (!membership) {
+      throw new ForbiddenException(
+        'You must be a member of this community to post',
+      );
+    }
+
     return this.prisma.post.create({
       data: { ...dto, authorId },
       include: {
