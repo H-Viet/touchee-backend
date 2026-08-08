@@ -7,6 +7,7 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { PostsModule } from './posts/posts.module';
 import { CommunitiesModule } from './communities/communities.module';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { CommunitiesModule } from './communities/communities.module';
     UsersModule,
     PostsModule,
     CommunitiesModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
