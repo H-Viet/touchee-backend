@@ -6,6 +6,9 @@ import {
 import { PrismaService } from '@app/database';
 import { VoteValue } from '@prisma/client';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { ReplyCommentDto } from './dto/reply-comment.dto';
+
+const MAX_DEPTH = 6;
 
 const authorSelect = {
   id: true,
@@ -14,49 +17,27 @@ const authorSelect = {
   avatarUrl: true,
 };
 
-const commentSelect = {
-  id: true,
-  content: true,
-  upVote: true,
-  downVote: true,
-  createdAt: true,
-  updatedAt: true,
-  author: { select: authorSelect },
-  replies: {
-    select: {
-      id: true,
-      content: true,
-      upVote: true,
-      downVote: true,
-      createdAt: true,
-      author: { select: authorSelect },
-    },
-    orderBy: { createdAt: 'asc' as const },
-  },
-  _count: { select: { replies: true } },
-};
-
 @Injectable()
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ─── Create top-level comment ────────────────────────────────────────────
   async create(authorId: string, postId: string, dto: CreateCommentDto) {
-    // Confirm the post exists
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    if (!post) throw new NotFoundException('Post not found');
 
-    // Check user is a member of the community this post belongs to
+    // Check community access based on type (we'll add this properly in Phase 2 fix)
     const membership = await this.prisma.userCommunity.findUnique({
       where: {
-        userId_communityId: {
-          userId: authorId,
-          communityId: post.communityId,
-        },
+        userId_communityId: { userId: authorId, communityId: post.communityId },
       },
     });
-    if (!membership) {
+
+    const community = await this.prisma.community.findUnique({
+      where: { id: post.communityId },
+    });
+
+    if (!membership && community?.type !== 'PUBLIC') {
       throw new ForbiddenException(
         'You must be a member of this community to comment',
       );
@@ -67,38 +48,83 @@ export class CommentsService {
         content: dto.content,
         postId,
         authorId,
+        depth: 0,
+        path: '',
       },
-      select: commentSelect,
+      include: {
+        author: { select: authorSelect },
+        _count: { select: { children: true } },
+      },
     });
   }
 
+  // ─── Fetch top 2 levels for initial post load (Reddit-style) ─────────────
   async findByPost(postId: string) {
-    // Confirm post exists
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
-    if (!post) {
-      throw new NotFoundException('Post not found');
-    }
+    if (!post) throw new NotFoundException('Post not found');
 
-    // Only fetch top-level comments (no replyForCommentId)
-    // Their replies come nested inside via commentSelect
-    return this.prisma.comment.findMany({
-      where: { postId, replyForCommentId: null },
-      select: commentSelect,
+    // Load depth 0 and 1 only — deeper levels load on demand via getSubtree()
+    const comments = await this.prisma.comment.findMany({
+      where: { postId, depth: { lte: 1 } },
       orderBy: { createdAt: 'asc' },
+      include: {
+        author: { select: authorSelect },
+        _count: { select: { children: true } },
+      },
     });
+
+    // Nest depth-1 replies under their parent depth-0 comments in memory
+    // This avoids multiple round trips to the database
+    const topLevel = comments.filter((c) => c.depth === 0);
+    const replies = comments.filter((c) => c.depth === 1);
+
+    return topLevel.map((comment) => ({
+      ...comment,
+      children: replies.filter((r) => r.parentId === comment.id),
+    }));
   }
 
-  async reply(authorId: string, commentId: string, dto: CreateCommentDto) {
-    // Find the parent comment
-    const parent = await this.prisma.comment.findUnique({
+  // ─── Lazy load deeper replies (the "view more replies" click) ─────────────
+  async getSubtree(commentId: string, depth: number = 3) {
+    const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
+    });
+    if (!comment) throw new NotFoundException('Comment not found');
+
+    // Find all descendants using the path field — one single query, no recursion
+    // path contains commentId means this comment is an ancestor
+    const descendants = await this.prisma.comment.findMany({
+      where: {
+        path: { contains: commentId },
+        depth: { lte: comment.depth + depth },
+      },
+      orderBy: [{ depth: 'asc' }, { createdAt: 'asc' }],
+      include: {
+        author: { select: authorSelect },
+        _count: { select: { children: true } },
+      },
+    });
+
+    // Build the tree structure in memory from flat list
+    return this.buildTree(descendants, commentId);
+  }
+
+  // ─── Reply to any comment (any depth) ────────────────────────────────────
+  async reply(authorId: string, parentId: string, dto: ReplyCommentDto) {
+    const parent = await this.prisma.comment.findUnique({
+      where: { id: parentId },
       include: { post: true },
     });
-    if (!parent) {
-      throw new NotFoundException('Comment not found');
+    if (!parent) throw new NotFoundException('Comment not found');
+
+    // Check depth limit
+    if (parent.depth >= MAX_DEPTH) {
+      throw new ForbiddenException(
+        `Maximum reply depth of ${MAX_DEPTH} reached`,
+      );
     }
 
-    // Check membership in the same community
+    // Check community access
     const membership = await this.prisma.userCommunity.findUnique({
       where: {
         userId_communityId: {
@@ -107,44 +133,43 @@ export class CommentsService {
         },
       },
     });
-    if (!membership) {
+
+    const community = await this.prisma.community.findUnique({
+      where: { id: parent.post.communityId },
+    });
+
+    if (!membership && community?.type !== 'PUBLIC') {
       throw new ForbiddenException(
         'You must be a member of this community to reply',
       );
     }
 
-    // Prevent replying to a reply — keep nesting flat (one level max)
-    if (parent.replyForCommentId !== null) {
-      throw new ForbiddenException(
-        'Cannot reply to a reply — respond to the top-level comment instead',
-      );
-    }
+    // Build the path — parent's path + parent's id
+    // e.g. parent path = "uuid1.uuid2", new path = "uuid1.uuid2.uuid3"
+    const newPath = parent.path ? `${parent.path}.${parent.id}` : parent.id;
 
     return this.prisma.comment.create({
       data: {
         content: dto.content,
         postId: parent.postId,
         authorId,
-        replyForCommentId: commentId,
+        parentId,
+        depth: parent.depth + 1,
+        path: newPath,
       },
-      select: {
-        id: true,
-        content: true,
-        upVote: true,
-        downVote: true,
-        createdAt: true,
+      include: {
         author: { select: authorSelect },
+        _count: { select: { children: true } },
       },
     });
   }
 
+  // ─── Vote (same pattern as posts) ────────────────────────────────────────
   async vote(userId: string, commentId: string, value: VoteValue) {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
-    if (!comment) {
-      throw new NotFoundException('Comment not found');
-    }
+    if (!comment) throw new NotFoundException('Comment not found');
 
     const existing = await this.prisma.commentVote.findUnique({
       where: { commentId_userId: { commentId, userId } },
@@ -190,20 +215,38 @@ export class CommentsService {
     });
   }
 
+  // ─── Delete (cascades to all children automatically via Prisma) ───────────
   async delete(userId: string, commentId: string) {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
-    if (!comment) {
-      throw new NotFoundException('Comment not found');
-    }
+    if (!comment) throw new NotFoundException('Comment not found');
 
-    // Only the author can delete their own comment
     if (comment.authorId !== userId) {
       throw new ForbiddenException('You can only delete your own comments');
     }
 
     await this.prisma.comment.delete({ where: { id: commentId } });
-    return { message: 'Comment deleted successfully' };
+    return { message: 'Comment deleted' };
+  }
+
+  // ─── Helper — build nested tree from flat list ────────────────────────────
+  private buildTree(comments: any[], rootParentId: string) {
+    const map = new Map<string, any>();
+    const roots: any[] = [];
+
+    comments.forEach((c) => {
+      map.set(c.id, { ...c, children: [] });
+    });
+
+    comments.forEach((c) => {
+      if (c.parentId === rootParentId) {
+        roots.push(map.get(c.id));
+      } else if (c.parentId && map.has(c.parentId)) {
+        map.get(c.parentId).children.push(map.get(c.id));
+      }
+    });
+
+    return roots;
   }
 }
