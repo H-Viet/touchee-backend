@@ -192,8 +192,14 @@ model UserAchievement {
 }
 
 // ============================================================================
-// 3. COMMUNITIES (curated, Reddit-style but narrowed to safe-space categories)
+// 3. COMMUNITIES 
 // ============================================================================
+
+enum CommunityType {
+  PUBLIC
+  RESTRICTED
+  PRIVATE
+}
 
 model CommunityCategory {
   id          String   @id @default(uuid())
@@ -219,6 +225,8 @@ model Community {
 
   members UserCommunity[]
   posts   Post[]
+
+  type CommunityType @default(PUBLIC)
 
   @@map("communities")
 }
