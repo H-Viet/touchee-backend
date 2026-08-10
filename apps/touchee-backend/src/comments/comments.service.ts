@@ -58,7 +58,7 @@ export class CommentsService {
     });
   }
 
-  // ─── Fetch top 2 levels for initial post load (Reddit-style) ─────────────
+  // ─── Fetch top 2 levels for initial post load  ─────────────
   async findByPost(postId: string) {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (!post) throw new NotFoundException('Post not found');
@@ -74,7 +74,7 @@ export class CommentsService {
     });
 
     // Nest depth-1 replies under their parent depth-0 comments in memory
-    // This avoids multiple round trips to the database
+    // Help avoids multiple round trips to the database
     const topLevel = comments.filter((c) => c.depth === 0);
     const replies = comments.filter((c) => c.depth === 1);
 
@@ -84,19 +84,21 @@ export class CommentsService {
     }));
   }
 
-  // ─── Lazy load deeper replies (the "view more replies" click) ─────────────
+  // ─── Lazy load deeper replies  ─────────────
   async getSubtree(commentId: string, depth: number = 3) {
     const comment = await this.prisma.comment.findUnique({
       where: { id: commentId },
     });
     if (!comment) throw new NotFoundException('Comment not found');
 
+    const depthLimit = Number(depth);
+
     // Find all descendants using the path field — one single query, no recursion
     // path contains commentId means this comment is an ancestor
     const descendants = await this.prisma.comment.findMany({
       where: {
         path: { contains: commentId },
-        depth: { lte: comment.depth + depth },
+        depth: { lte: comment.depth + depthLimit },
       },
       orderBy: [{ depth: 'asc' }, { createdAt: 'asc' }],
       include: {
@@ -109,7 +111,7 @@ export class CommentsService {
     return this.buildTree(descendants, commentId);
   }
 
-  // ─── Reply to any comment (any depth) ────────────────────────────────────
+  // ─── Reply to any comment  ────────────────────────────────────
   async reply(authorId: string, parentId: string, dto: ReplyCommentDto) {
     const parent = await this.prisma.comment.findUnique({
       where: { id: parentId },

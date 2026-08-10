@@ -1,9 +1,11 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
+  ParseIntPipe,
   Post,
   Query,
   UseGuards,
@@ -35,10 +37,13 @@ export class CommentsController {
 
   // "View more replies" — lazy loads deeper levels
   @Get('comments/:id/replies')
-  getSubtree(@Param('id') commentId: string, @Query('depth') depth?: string) {
+  getSubtree(
+    @Param('id') commentId: string,
+    @Query('depth', new DefaultValuePipe(3), ParseIntPipe) depth?: string,
+  ) {
     return this.commentsService.getSubtree(
       commentId,
-      depth ? parseInt(depth) : 3,
+      depth ? Number(depth) : 3,
     );
   }
 
