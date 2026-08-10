@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Query,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '@app/auth';
@@ -27,8 +28,9 @@ export class CommunitiesController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.communitiesService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req: any) {
+    const userId = req.user?.userId;
+    return this.communitiesService.findOne(id, userId);
   }
 
   @UseGuards(JwtAuthGuard)

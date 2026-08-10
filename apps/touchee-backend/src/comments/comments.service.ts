@@ -21,27 +21,33 @@ const authorSelect = {
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // Helper function to check posting access --- with commutiy type
+  private async checkCommunityAccess(userId: string, communityId: string) {
+    const community = await this.prisma.community.findUnique({
+      where: { id: communityId },
+    });
+    if (!community) throw new NotFoundException('Community not found');
+
+    if (community.type === 'PUBLIC') return; // anyone can comment
+
+    const membership = await this.prisma.userCommunity.findUnique({
+      where: { userId_communityId: { userId, communityId } },
+    });
+    if (!membership) {
+      throw new ForbiddenException(
+        community.type === 'PRIVATE'
+          ? 'This community is private — join to participate'
+          : 'You must be a member to comment in this community',
+      );
+    }
+  }
+
   // ─── Create top-level comment ────────────────────────────────────────────
   async create(authorId: string, postId: string, dto: CreateCommentDto) {
     const post = await this.prisma.post.findUnique({ where: { id: postId } });
     if (!post) throw new NotFoundException('Post not found');
 
-    // Check community access based on type (we'll add this properly in Phase 2 fix)
-    const membership = await this.prisma.userCommunity.findUnique({
-      where: {
-        userId_communityId: { userId: authorId, communityId: post.communityId },
-      },
-    });
-
-    const community = await this.prisma.community.findUnique({
-      where: { id: post.communityId },
-    });
-
-    if (!membership && community?.type !== 'PUBLIC') {
-      throw new ForbiddenException(
-        'You must be a member of this community to comment',
-      );
-    }
+    await this.checkCommunityAccess(authorId, post.communityId);
 
     return this.prisma.comment.create({
       data: {
@@ -127,24 +133,7 @@ export class CommentsService {
     }
 
     // Check community access
-    const membership = await this.prisma.userCommunity.findUnique({
-      where: {
-        userId_communityId: {
-          userId: authorId,
-          communityId: parent.post.communityId,
-        },
-      },
-    });
-
-    const community = await this.prisma.community.findUnique({
-      where: { id: parent.post.communityId },
-    });
-
-    if (!membership && community?.type !== 'PUBLIC') {
-      throw new ForbiddenException(
-        'You must be a member of this community to reply',
-      );
-    }
+    await this.checkCommunityAccess(authorId, parent.post.communityId);
 
     // Build the path — parent's path + parent's id
     // e.g. parent path = "uuid1.uuid2", new path = "uuid1.uuid2.uuid3"

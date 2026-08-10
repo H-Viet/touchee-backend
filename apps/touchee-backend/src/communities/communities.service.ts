@@ -2,6 +2,7 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '@app/database';
 import { CreateCommunityDto } from './dto/create-community.dto';
@@ -10,6 +11,7 @@ const communitySelect = {
   id: true,
   name: true,
   description: true,
+  type: true,
   createdAt: true,
   category: {
     select: { id: true, name: true, description: true },
@@ -39,7 +41,7 @@ export class CommunitiesService {
     });
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId?: string) {
     const community = await this.prisma.community.findUnique({
       where: { id },
       select: communitySelect,
@@ -47,6 +49,24 @@ export class CommunitiesService {
     if (!community) {
       throw new NotFoundException('Community not found');
     }
+
+    // PRIVATE communities — only members can view
+    if (community.type === 'PRIVATE') {
+      if (!userId) {
+        throw new ForbiddenException(
+          'This community is private — login and join to view it',
+        );
+      }
+      const membership = await this.prisma.userCommunity.findUnique({
+        where: { userId_communityId: { userId, communityId: id } },
+      });
+      if (!membership) {
+        throw new ForbiddenException(
+          'This community is private — request to join to view it',
+        );
+      }
+    }
+
     return community;
   }
 
@@ -140,12 +160,32 @@ export class CommunitiesService {
     return { message: 'Left community successfully' };
   }
 
-  async getCommunityPosts(communityId: string, cursor?: string, take = 20) {
+  async getCommunityPosts(
+    communityId: string,
+    userId?: string,
+    cursor?: string,
+    take = 20,
+  ) {
     const community = await this.prisma.community.findUnique({
       where: { id: communityId },
     });
     if (!community) {
       throw new NotFoundException('Community not found');
+    }
+
+    // PRIVATE — only members can see posts
+    if (community.type === 'PRIVATE') {
+      if (!userId) {
+        throw new ForbiddenException(
+          'This community is private — login and join to view posts',
+        );
+      }
+      const membership = await this.prisma.userCommunity.findUnique({
+        where: { userId_communityId: { userId, communityId } },
+      });
+      if (!membership) {
+        throw new ForbiddenException('This community is private');
+      }
     }
 
     return this.prisma.post.findMany({

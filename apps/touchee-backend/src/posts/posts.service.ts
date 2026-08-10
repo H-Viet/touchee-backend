@@ -19,19 +19,32 @@ export class PostsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(authorId: string, dto: CreatePostDto) {
-    // Check user is actually a member of this community
-    const membership = await this.prisma.userCommunity.findUnique({
-      where: {
-        userId_communityId: {
-          userId: authorId,
-          communityId: dto.communityId,
-        },
-      },
+    // Fetch community to check its type
+    const community = await this.prisma.community.findUnique({
+      where: { id: dto.communityId },
     });
-    if (!membership) {
-      throw new ForbiddenException(
-        'You must be a member of this community to post',
-      );
+    if (!community) {
+      throw new NotFoundException('Community not found');
+    }
+
+    // PUBLIC communities — anyone can post
+    // RESTRICTED/PRIVATE — must be a member
+    if (community.type !== 'PUBLIC') {
+      const membership = await this.prisma.userCommunity.findUnique({
+        where: {
+          userId_communityId: {
+            userId: authorId,
+            communityId: dto.communityId,
+          },
+        },
+      });
+      if (!membership) {
+        throw new ForbiddenException(
+          community.type === 'PRIVATE'
+            ? 'This community is private — request to join first'
+            : 'You must be a member to post in this community',
+        );
+      }
     }
 
     return this.prisma.post.create({
