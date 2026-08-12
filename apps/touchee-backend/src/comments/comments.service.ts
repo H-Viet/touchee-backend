@@ -21,7 +21,7 @@ const authorSelect = {
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // Helper function to check posting access --- with commutiy type
+  // Helper function to check posting access --- with community type
   private async checkCommunityAccess(userId: string, communityId: string) {
     const community = await this.prisma.community.findUnique({
       where: { id: communityId },
