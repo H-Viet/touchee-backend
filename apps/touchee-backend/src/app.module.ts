@@ -9,6 +9,7 @@ import { PostsModule } from './posts/posts.module';
 import { CommunitiesModule } from './communities/communities.module';
 import { CommentsModule } from './comments/comments.module';
 import { CommonModule } from '@app/common';
+import { MatchingModule } from './matching/matching.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CommonModule } from '@app/common';
     PostsModule,
     CommunitiesModule,
     CommentsModule,
+    MatchingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
