@@ -1,0 +1,207 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Touchee Matching Test</title>
+    <script src="https://cdn.socket.io/4.8.0/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: monospace;
+        padding: 20px;
+        background: #1a1a2e;
+        color: #eee;
+      }
+      button {
+        margin: 5px;
+        padding: 8px 16px;
+        cursor: pointer;
+        background: #16213e;
+        color: #eee;
+        border: 1px solid #0f3460;
+        border-radius: 4px;
+      }
+      button:hover {
+        background: #0f3460;
+      }
+      #log {
+        margin-top: 20px;
+        padding: 10px;
+        background: #16213e;
+        border-radius: 8px;
+        min-height: 200px;
+      }
+      .event {
+        padding: 4px 0;
+        border-bottom: 1px solid #0f3460;
+      }
+      .matched {
+        color: #4ecca3;
+        font-weight: bold;
+      }
+      .ended {
+        color: #e94560;
+      }
+      .connected {
+        color: #4ecca3;
+      }
+      .error {
+        color: #e94560;
+      }
+      input {
+        padding: 8px;
+        width: 400px;
+        background: #16213e;
+        color: #eee;
+        border: 1px solid #0f3460;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🎯 Touchee Matching Tester</h2>
+
+    <div>
+      <label>JWT Token:</label><br />
+      <input id="token" placeholder="Paste your accessToken here" />
+    </div>
+    <br />
+
+    <div>
+      <label>User Label (just for your reference):</label><br />
+      <input
+        id="userLabel"
+        placeholder="e.g. User A or User B"
+        value="User A"
+      />
+    </div>
+    <br />
+
+    <button onclick="connect()">🔌 Connect WebSocket</button>
+    <button onclick="disconnect()">❌ Disconnect</button>
+    <br /><br />
+
+    <button onclick="joinPool('anxious')">Join Pool: anxious</button>
+    <button onclick="joinPool('lonely')">Join Pool: lonely</button>
+    <button onclick="joinPool('need_to_vent')">Join Pool: need_to_vent</button>
+    <button onclick="leavePool('anxious')">Leave Pool: anxious</button>
+    <br /><br />
+
+    <button onclick="sendHeartbeat('anxious')">💓 Heartbeat (anxious)</button>
+    <button onclick="getActive()">Get Active Match</button>
+    <br />
+
+    <div id="log"></div>
+
+    <script>
+      let socket = null;
+      const token = () => document.getElementById('token').value.trim();
+      const label = () => document.getElementById('userLabel').value.trim();
+
+      function log(msg, cls = '') {
+        const div = document.getElementById('log');
+        const time = new Date().toLocaleTimeString();
+        div.innerHTML =
+          `<div class="event ${cls}">[${time}] [${label()}] ${msg}</div>` +
+          div.innerHTML;
+      }
+
+      function connect() {
+        if (socket) socket.disconnect();
+
+        socket = io('http://localhost:3000/matching', {
+          auth: { token: `Bearer ${token()}` },
+          transports: ['websocket'],
+        });
+
+        socket.on('connect', () => {
+          log(`✅ Connected! Socket ID: ${socket.id}`, 'connected');
+        });
+
+        socket.on('disconnect', (reason) => {
+          log(`🔌 Disconnected: ${reason}`, 'error');
+        });
+
+        socket.on('connect_error', (err) => {
+          log(`❌ Connection error: ${err.message}`, 'error');
+        });
+
+        // 🎯 THE MAIN EVENT — fires when you get matched
+        socket.on('matched', (data) => {
+          log(
+            `🎉 MATCHED! matchId: ${data.matchId} | chatId: ${data.chatId} | partner: ${data.partnerUsername} | mood: ${data.moodTag}`,
+            'matched',
+          );
+          // Auto-save matchId for easy ending
+          window.lastMatchId = data.matchId;
+        });
+
+        // Fires when your match partner ends the match
+        socket.on('matchEnded', (data) => {
+          log(`💔 Match ended: ${data.matchId}`, 'ended');
+        });
+      }
+
+      function disconnect() {
+        if (socket) {
+          socket.disconnect();
+          socket = null;
+          log('Manually disconnected');
+        }
+      }
+
+      // Join pool via REST, not WebSocket
+      async function joinPool(moodCode) {
+        try {
+          const res = await fetch('http://localhost:3000/matching/join', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token()}`,
+            },
+            body: JSON.stringify({ moodCode }),
+          });
+          const data = await res.json();
+          log(`Joined pool [${moodCode}]: ${JSON.stringify(data)}`);
+        } catch (err) {
+          log(`Error joining pool: ${err.message}`, 'error');
+        }
+      }
+
+      async function leavePool(moodCode) {
+        try {
+          const res = await fetch(
+            `http://localhost:3000/matching/leave/${moodCode}`,
+            {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token()}` },
+            },
+          );
+          const data = await res.json();
+          log(`Left pool [${moodCode}]: ${JSON.stringify(data)}`);
+        } catch (err) {
+          log(`Error leaving pool: ${err.message}`, 'error');
+        }
+      }
+
+      async function getActive() {
+        try {
+          const res = await fetch('http://localhost:3000/matching/active', {
+            headers: { Authorization: `Bearer ${token()}` },
+          });
+          const data = await res.json();
+          log(`Active match: ${JSON.stringify(data)}`);
+        } catch (err) {
+          log(`Error: ${err.message}`, 'error');
+        }
+      }
+
+      function sendHeartbeat(moodCode) {
+        if (socket?.connected) {
+          socket.emit('heartbeat', { moodCode });
+          log(`💓 Heartbeat sent for pool: ${moodCode}`);
+        } else {
+          log('Not connected — connect first!', 'error');
+        }
+      }
+    </script>
+  </body>
+</html>
