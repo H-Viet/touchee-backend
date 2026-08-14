@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '@app/database';
 import { RedisService } from '@app/common';
 import { MatchingGateway } from './matching.gateway';
+import { ChatGateway } from '../chat/chat.gateway';
 
 @Injectable()
 export class MatchingService {
@@ -16,6 +17,7 @@ export class MatchingService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly gateway: MatchingGateway,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   async getMoods() {
@@ -119,6 +121,28 @@ export class MatchingService {
       include: {
         moodTag: true,
         chat: true,
+        userA: {
+          select: { id: true, username: true, avatarUrl: true },
+        },
+        userB: {
+          select: { id: true, username: true, avatarUrl: true },
+        },
+      },
+    });
+  }
+
+  async getHistory(userId: string, cursor?: string, take = 20) {
+    return this.prisma.match.findMany({
+      take,
+      where: {
+        OR: [{ userAId: userId }, { userBId: userId }],
+      },
+      ...(cursor && { skip: 1, cursor: { id: cursor } }),
+      orderBy: { startedAt: 'desc' },
+      include: {
+        moodTag: {
+          select: { code: true, name: true },
+        },
         userA: {
           select: { id: true, username: true, avatarUrl: true },
         },
@@ -236,9 +260,23 @@ export class MatchingService {
           }),
         ]);
 
+        // Push a system message into the chat so the conversation
+        // starts with context — users immediately know why they're connected
+        await tx.message.create({
+          data: {
+            chatId: chat.id,
+            senderId: userAId, // system messages attributed to userA for now
+            content: `🎯 You've been matched on mood: "${moodCode}". Say hi! 👋`,
+            status: 'sent',
+          },
+        });
+
         return { match, chat, userA, userB };
       },
     );
+
+    // ─── Everything below runs AFTER the transaction commits ─────────────────
+    // Side effects (WebSocket, Redis) only fire once DB is fully committed
 
     // Remove both users from Redis pool — they're matched now
     await Promise.all([
@@ -264,6 +302,19 @@ export class MatchingService {
       }),
     ]);
 
+    // Push system message to chat room via WebSocket
+    // Push the system message to both users' chat rooms in real time
+    await this.chatGateway.pushToChat(chat.id, 'newMessage', {
+      id: null,
+      chatId: chat.id,
+      content: `🎯 You've been matched on mood: "${moodCode}". Say hi! 👋`,
+      sender: { id: 'system', username: 'Touchee' },
+      createdAt: new Date(),
+      reads: [],
+      reactions: [],
+    });
+
     this.logger.log(`Match created: ${match.id}`);
+    this.logger.log(`System message pushed to chat room ${chat.id}`);
   }
 }

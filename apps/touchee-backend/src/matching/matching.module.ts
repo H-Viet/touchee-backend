@@ -4,10 +4,12 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MatchingController } from './matching.controller';
 import { MatchingService } from './matching.service';
 import { MatchingGateway } from './matching.gateway';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
     // Gateway needs JwtService to verify tokens on WebSocket connect
+    ChatModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

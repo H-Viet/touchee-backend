@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard } from '@app/auth';
 import { MatchingService } from './matching.service';
@@ -50,5 +51,14 @@ export class MatchingController {
     @Param('id') matchId: string,
   ) {
     return this.matchingService.endMatch(user.userId, matchId);
+  }
+
+  // Get matching history
+  @Get('history')
+  getHistory(
+    @CurrentUser() user: { userId: string },
+    @Query('cursor') cursor?: string,
+  ) {
+    return this.matchingService.getHistory(user.userId, cursor);
   }
 }
