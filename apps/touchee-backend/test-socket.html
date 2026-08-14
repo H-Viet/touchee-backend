@@ -126,6 +126,12 @@
       <button onclick="editMessageWS()">✏️ Edit Message</button>
       <button onclick="deleteMessageWS()">🗑️ Delete Message</button>
       <button onclick="markReadWS()">✅ Mark Read</button>
+      <br /><br />
+      <button onclick="addReaction('heart')">❤️ Heart</button>
+      <button onclick="addReaction('laugh')">😂 Laugh</button>
+      <button onclick="addReaction('sad')">😢 Sad</button>
+      <button onclick="addReaction('hug')">🫂 Hug</button>
+      <button onclick="removeReaction()">💔 Remove Reaction</button>
     </div>
 
     <div id="log"></div>
@@ -184,9 +190,18 @@
           auth: { token: `Bearer ${token()}` },
           transports: ['websocket'],
         });
-        chatSocket.on('connect', () =>
-          log(`✅ Chat connected: ${chatSocket.id}`, 'connected'),
-        );
+        chatSocket.on('newMessage', (msg) => {
+          const senderName = msg.sender?.username ?? 'Unknown';
+          const messageId = msg.id ?? 'system';
+          log(
+            `💬 New message from ${senderName}: "${msg.content}" (id: ${messageId})`,
+            'message',
+          );
+          window.lastMessageId = msg.id;
+          if (msg.id) {
+            document.getElementById('messageId').value = msg.id;
+          }
+        });
         chatSocket.on('disconnect', (r) =>
           log(`🔌 Chat disconnected: ${r}`, 'error'),
         );
@@ -231,6 +246,16 @@
 
         chatSocket.on('messageDeleted', (data) => {
           log(`🗑️ Message deleted: ${data.id}`, 'message');
+        });
+
+        chatSocket.on('reactionAdded', (data) => {
+          log(
+            `❤️ Reaction added by ${data.userId}: ${data.reaction.reaction.icon}`,
+            'message',
+          );
+        });
+        chatSocket.on('reactionRemoved', (data) => {
+          log(`💔 Reaction removed by ${data.userId}`, 'message');
         });
 
         chatSocket.on('error', (err) =>
@@ -320,16 +345,6 @@
         const messageId = document.getElementById('messageId').value.trim();
         chatSocket.emit('removeReaction', { messageId, chatId: chatId() });
       }
-
-      chatSocket.on('reactionAdded', (data) => {
-        log(
-          `❤️ Reaction added by ${data.userId}: ${data.reaction.reaction.icon}`,
-          'message',
-        );
-      });
-      chatSocket.on('reactionRemoved', (data) => {
-        log(`💔 Reaction removed by ${data.userId}`, 'message');
-      });
 
       // ── Matching helpers ─────────────────────────────────────────────────────
       async function joinPool(moodCode) {
