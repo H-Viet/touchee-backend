@@ -194,6 +194,49 @@ export class ChatService {
     return { read: messageIds.length };
   }
 
+  // ─── Chat reaction ────────────────────────────────────────────────
+  async addReaction(userId: string, messageId: string, reactionType: string) {
+    // Confirm message exists
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+    });
+    if (!message) throw new NotFoundException('Message not found');
+
+    // Confirm user is a member of this chat
+    await this.checkMembership(userId, message.chatId);
+
+    // Confirm reaction type exists in our lookup table
+    const reaction = await this.prisma.reaction.findUnique({
+      where: { type: reactionType },
+    });
+    if (!reaction)
+      throw new NotFoundException(`Reaction type "${reactionType}" not found`);
+
+    // One reaction per user per message — upsert handles duplicates
+    return this.prisma.userReaction.upsert({
+      where: { messageId_userId: { messageId, userId } },
+      create: { messageId, userId, reactionId: reaction.id },
+      update: { reactionId: reaction.id }, // allows changing reaction type
+      include: {
+        reaction: { select: { icon: true, type: true } },
+      },
+    });
+  }
+
+  // ─── Undo chat reaction ────────────────────────────────────────────────
+  async removeReaction(userId: string, messageId: string) {
+    const existing = await this.prisma.userReaction.findUnique({
+      where: { messageId_userId: { messageId, userId } },
+    });
+    if (!existing) throw new NotFoundException('Reaction not found');
+
+    await this.prisma.userReaction.delete({
+      where: { messageId_userId: { messageId, userId } },
+    });
+
+    return { message: 'Reaction removed' };
+  }
+
   // ─── Helper ───────────────────────────────────────────────────────────────
   async checkMembership(userId: string, chatId: string) {
     const membership = await this.prisma.userChat.findUnique({

@@ -172,4 +172,45 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async pushToChat(chatId: string, event: string, data: any) {
     this.server.to(chatId).emit(event, data);
   }
+
+  @SubscribeMessage('addReaction')
+  async handleAddReaction(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody()
+    data: { messageId: string; chatId: string; reactionType: string },
+  ) {
+    const userId = socket.data.userId;
+    try {
+      const reaction = await this.chatService.addReaction(
+        userId,
+        data.messageId,
+        data.reactionType,
+      );
+      // Broadcast to everyone in the chat
+      this.server.to(data.chatId).emit('reactionAdded', {
+        messageId: data.messageId,
+        userId,
+        reaction,
+      });
+    } catch (err: any) {
+      socket.emit('error', { message: err?.message ?? 'Something went wrong' });
+    }
+  }
+
+  @SubscribeMessage('removeReaction')
+  async handleRemoveReaction(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() data: { messageId: string; chatId: string },
+  ) {
+    const userId = socket.data.userId;
+    try {
+      await this.chatService.removeReaction(userId, data.messageId);
+      this.server.to(data.chatId).emit('reactionRemoved', {
+        messageId: data.messageId,
+        userId,
+      });
+    } catch (err: any) {
+      socket.emit('error', { message: err?.message ?? 'Something went wrong' });
+    }
+  }
 }

@@ -66,4 +66,21 @@ export class ChatController {
   ) {
     return this.chatService.deleteMessage(user.userId, messageId);
   }
+
+  @Post('messages/:id/reactions')
+  addReaction(
+    @CurrentUser() user: { userId: string },
+    @Param('id') messageId: string,
+    @Body('reactionType') reactionType: string,
+  ) {
+    return this.chatService.addReaction(user.userId, messageId, reactionType);
+  }
+
+  @Delete('messages/:id/reactions')
+  removeReaction(
+    @CurrentUser() user: { userId: string },
+    @Param('id') messageId: string,
+  ) {
+    return this.chatService.removeReaction(user.userId, messageId);
+  }
 }
