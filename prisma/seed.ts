@@ -146,6 +146,24 @@ async function main() {
     }
   }
 
+  console.log('Seeding reactions...');
+  await Promise.all(
+    [
+      { icon: '❤️', type: 'heart' },
+      { icon: '😂', type: 'laugh' },
+      { icon: '😢', type: 'sad' },
+      { icon: '😮', type: 'wow' },
+      { icon: '👍', type: 'thumbsup' },
+      { icon: '🫂', type: 'hug' },
+    ].map((r) =>
+      prisma.reaction.upsert({
+        where: { type: r.type },
+        update: {},
+        create: r,
+      }),
+    ),
+  );
+
   console.log('Seed complete.');
 }
 
