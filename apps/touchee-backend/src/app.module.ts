@@ -10,6 +10,7 @@ import { CommunitiesModule } from './communities/communities.module';
 import { CommentsModule } from './comments/comments.module';
 import { CommonModule } from '@app/common';
 import { MatchingModule } from './matching/matching.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { MatchingModule } from './matching/matching.module';
     CommunitiesModule,
     CommentsModule,
     MatchingModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],
