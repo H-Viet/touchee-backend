@@ -11,6 +11,8 @@ import { CommentsModule } from './comments/comments.module';
 import { CommonModule } from '@app/common';
 import { MatchingModule } from './matching/matching.module';
 import { ChatModule } from './chat/chat.module';
+import { FriendsModule } from './friends/friends.module';
+import { RatingsModule } from './ratings/ratings.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { ChatModule } from './chat/chat.module';
     CommentsModule,
     MatchingModule,
     ChatModule,
+    FriendsModule,
+    RatingsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
