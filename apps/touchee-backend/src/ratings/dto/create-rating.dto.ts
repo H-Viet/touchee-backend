@@ -1,7 +1,7 @@
 import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export class CreateRatingDto {
-  @IsUUID()
+  @IsString()
   declare ratingTypeCode: string;
 
   @IsOptional()
