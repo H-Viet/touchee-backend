@@ -24,7 +24,11 @@ export class FriendsController {
     @Param('id') receiverId: string,
     @Body() dto: CreateFriendRequestDto,
   ) {
-    return this.friendsService.sendRequest(user.userId, receiverId, dto);
+    return this.friendsService.sendRequest(
+      user.userId,
+      receiverId,
+      dto.matchId,
+    );
   }
 
   @Get('friend-requests')

@@ -22,11 +22,7 @@ export class FriendsService {
   constructor(private readonly prisma: PrismaService) {}
 
   // ─── Send a friend request ─────────────────────────────────────────────────
-  async sendRequest(
-    senderId: string,
-    receiverId: string,
-    dto: CreateFriendRequestDto,
-  ) {
+  async sendRequest(senderId: string, receiverId: string, matchId?: string) {
     // Can't add yourself
     if (senderId === receiverId) {
       throw new BadRequestException(
@@ -40,13 +36,15 @@ export class FriendsService {
     });
     if (!receiver) throw new NotFoundException('User not found');
 
-    // Confirm the match exists and both users were part of it
-    const match = await this.prisma.match.findUnique({
-      where: { id: dto.matchId },
-    });
-    if (!match) throw new NotFoundException('Match not found');
-    if (match.userAId !== senderId && match.userBId !== senderId) {
-      throw new ForbiddenException('You were not part of this match');
+    // matchId is now optional — only validate it if provided
+    if (matchId) {
+      const match = await this.prisma.match.findUnique({
+        where: { id: matchId },
+      });
+      if (!match) throw new NotFoundException('Match not found');
+      if (match.userAId !== senderId && match.userBId !== senderId) {
+        throw new ForbiddenException('You were not part of this match');
+      }
     }
 
     // Check not already friends
@@ -74,7 +72,7 @@ export class FriendsService {
       data: {
         senderId,
         receiverId,
-        matchId: dto.matchId,
+        matchId: matchId ?? null,
         status: 'PENDING',
       },
       include: {
