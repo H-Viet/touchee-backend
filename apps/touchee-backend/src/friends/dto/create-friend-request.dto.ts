@@ -3,7 +3,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateFriendRequestDto {
   @ApiPropertyOptional({
-    description: 'Optional — the match that prompted this request',
+    example: 'c144bf7e-...',
+    description:
+      'Optional — the match that prompted this request. Omit entirely to send a general friend request.',
   })
   @IsOptional()
   @IsUUID()
