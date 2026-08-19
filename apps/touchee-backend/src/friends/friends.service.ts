@@ -61,8 +61,8 @@ export class FriendsService {
     }
 
     // Check no pending request already exists
-    const existing = await this.prisma.friendRequest.findUnique({
-      where: { senderId_receiverId: { senderId, receiverId } },
+    const existing = await this.prisma.friendRequest.findFirst({
+      where: { senderId, receiverId, status: 'PENDING' },
     });
     if (existing) {
       throw new ConflictException('Friend request already sent');
