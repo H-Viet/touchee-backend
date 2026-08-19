@@ -15,14 +15,14 @@ import { JwtStrategy } from './jwt.strategy';
       useFactory: (config: ConfigService): JwtModuleOptions => {
         const secret = config.get<string>('JWT_SECRET');
         if (!secret) {
-          throw new Error('JWT_SECRET is not set in your .env file');
+          throw new Error('JWT_SECRET is not set');
         }
         return {
           secret,
           signOptions: {
             expiresIn: config.get<string>(
               'JWT_EXPIRES_IN',
-              '1d',
+              '15m',
             ) as JwtModuleOptions['signOptions'] extends { expiresIn?: infer T }
               ? T
               : never,
