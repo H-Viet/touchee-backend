@@ -18,6 +18,7 @@ import {
 import { CurrentUser, JwtAuthGuard } from '@app/auth';
 import { MatchingService } from './matching.service';
 import { JoinMatchDto } from './dto/join-match.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @ApiTags('Matching')
 @ApiBearerAuth('access-token')
@@ -41,6 +42,8 @@ export class MatchingController {
     description: 'Already in a pool or has an active match',
   })
   @ApiResponse({ status: 404, description: 'Mood tag not found' })
+  // prevent user joining the pool to fast
+  @Throttle({ short: { ttl: 60000, limit: 10 } })
   @Post('join')
   join(@CurrentUser() user: { userId: string }, @Body() dto: JoinMatchDto) {
     return this.matchingService.joinPool(user.userId, dto.moodCode);
