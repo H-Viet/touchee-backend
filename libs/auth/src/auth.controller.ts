@@ -32,6 +32,8 @@ export class AuthController {
     description: 'Account created, returns JWT + user info',
   })
   @ApiResponse({ status: 409, description: 'Email or username already in use' })
+  // Register: max 3 per minute (prevent spam accounts)
+  @Throttle({ short: { ttl: 60000, limit: 3 } })
   @Post('register')
   register(@Body() dto: RegisterDto, @Request() req: any) {
     return this.authService.register(dto);
@@ -43,6 +45,8 @@ export class AuthController {
     description: 'Login successful, returns JWT + user info',
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  // Login: max 5 attempts per minute (brute force protection)
+  @Throttle({ short: { ttl: 60000, limit: 5 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto, @Request() req: any) {
@@ -59,6 +63,8 @@ export class AuthController {
       'Returns new token pair — old refreshToken is revoked (rotation)',
   })
   @ApiResponse({ status: 401, description: 'Refresh token invalid or expired' })
+  // Refresh: max 20 per minute
+  @Throttle({ medium: { ttl: 60000, limit: 20 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshTokenDto) {
